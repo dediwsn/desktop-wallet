@@ -47,6 +47,7 @@ import { ReactComponent as StatusClock } from "./status-clock.svg";
 import { ReactComponent as Trash } from "./trash.svg";
 import { ReactComponent as Twitter } from "./twitter.svg";
 import { ReactComponent as Upload } from "./upload.svg";
+import { ReactComponent as User } from "./user.svg";
 import { ReactComponent as Voted } from "./voted.svg";
 
 export const SvgCollection: any = {
@@ -100,4 +101,5 @@ export const SvgCollection: any = {
 	Voted,
 	Notification,
 	Receive,
+	User,
 };
