@@ -9,7 +9,8 @@ import { InputRange } from "app/components/Input/InputRange";
 import { RadioButton, RadioButtonGroup } from "app/components/RadioButton";
 import { useRadioState } from "app/components/RadioButton/useRadioState";
 import { Select } from "app/components/Select";
-import React from "react";
+import { Table } from "app/components/Table";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { styled } from "twin.macro";
 
@@ -21,7 +22,7 @@ const FormWrapper = styled.div`
 
 type SendProps = {
 	maxAvailableAmount: number;
-	recipientList: any;
+	contactList: any;
 	senderList: any;
 	formDefaultData: any;
 	networks: any;
@@ -30,25 +31,57 @@ type SendProps = {
 	maxFee: number;
 	onContinue: any;
 	onBack: any;
+	assetSymbol: string;
 };
+
+type RecipientListItem = {
+	amount: number;
+	address: string;
+	walletName: string;
+	assetSymbol: string;
+	onRemove: any;
+};
+
+export const RecipientListItem = ({ amount, address, walletName, assetSymbol, onRemove }: RecipientListItem) => (
+	<tr className="border-b border-theme-neutral-200">
+		<td className="w-12 py-4">
+			<Circle avatarId="test" size="small"></Circle>
+		</td>
+		<td>
+			<Address address={address} walletName={walletName}></Address>
+		</td>
+
+		<td className="font-bold text-theme-neutral-800 text-right">
+			{amount} {assetSymbol}
+		</td>
+		<td className="text-right w-16">
+			<Button color="primary" variant="plain" onClick={onRemove}>
+				<div className="py-1">
+					<Icon name="Trash"></Icon>
+				</div>
+			</Button>
+		</td>
+	</tr>
+);
 
 export const Send = ({
 	feeRange,
 	networks,
 	maxAvailableAmount,
 	formDefaultData,
-	recipientList,
+	contactList,
 	senderList,
 	maxFee,
 	onContinue,
 	onBack,
+	assetSymbol,
 }: SendProps) => {
 	const form = useForm({
 		defaultValues: formDefaultData,
 	});
 
 	const { setValue, register } = form;
-	const { network, fee, sender, recipient } = form.watch();
+	const { network, fee, sender, recipient, amount } = form.watch();
 	const feeRangeValue = useRadioState(0);
 
 	const onSubmit = () => void 0;
@@ -65,7 +98,7 @@ export const Send = ({
 	};
 
 	const getProfileInfo = (address: string) => {
-		const profiles = [...recipientList, ...senderList];
+		const profiles = [...contactList, ...senderList];
 		return profiles.find((profile: any) => profile.address === address);
 	};
 
@@ -73,6 +106,33 @@ export const Send = ({
 		const selected = networks.find((network: any) => network.value === networkValue);
 		return selected;
 	};
+
+	const [addedRecipients, setAddressRecipients] = useState([]);
+
+	const onAddRecipient = (recipient: string, amount: number) => {
+		const { walletName, address } = getProfileInfo(recipient);
+		const newRecipients = addedRecipients.concat();
+		newRecipients.push({ amount, walletName, address });
+		setAddressRecipients(newRecipients);
+
+		// Remove recipient from available contacts list
+		// Reset values
+		form.setValue("amount", 0);
+		form.setValue("recipient", null);
+	};
+
+	const onRemoveRecipient = (address: string) => {
+		const index = addedRecipients.findIndex((addedRecipient: any) => addedRecipient.address === address);
+		const newRecipients = addedRecipients.concat();
+		newRecipients.splice(index, 1);
+		setAddressRecipients(newRecipients);
+	};
+
+	const availableContacts = contactList.filter((contact: any) => {
+		if (addedRecipients.length === 0) return true;
+		const added = addedRecipients.map(({ address }: any) => address);
+		return !added.includes(contact.address);
+	});
 
 	return (
 		<FormWrapper>
@@ -84,15 +144,22 @@ export const Send = ({
 					<div className="mb-2">
 						<FormLabel label="Network" />
 					</div>
-					<Select placeholder=" " className="send-transaction__select-network" name="network" ref={register}>
-						{networks &&
-							networks.map((network: any, index: number) => (
-								<option key={index} value={network.value}>
-									{network.label}
-								</option>
-							))}
-					</Select>
+					<div className=" select-transparent">
+						<Select placeholder=" " name="network" ref={register}>
+							{networks &&
+								networks.map((network: any, index: number) => (
+									<option key={index} value={network.value}>
+										{network.label}
+									</option>
+								))}
+						</Select>
+					</div>
 
+					{!network && (
+						<div className="absolute -mt-10 ml-4">
+							<Circle className="border-theme-neutral-200" size="small" noShadow />
+						</div>
+					)}
 					{network && (
 						<div className="-mt-10 flex items-center mt-10 ml-4">
 							<Circle className={getNetwork(network).iconClassName} size="small" noShadow>
@@ -108,12 +175,12 @@ export const Send = ({
 						<FormLabel label="Sender" />
 					</div>
 
-					<InputGroup className="send-transaction__select-contact">
+					<InputGroup className="send-transaction__select-contact select-transparent">
 						<Select disabled={!network} placeholder=" " name="sender" ref={register}>
 							{senderList &&
 								senderList.map((sender: any, index: number) => (
 									<option key={index} value={sender.address}>
-										{sender.address}
+										{sender.formatted}
 									</option>
 								))}
 						</Select>
@@ -126,27 +193,28 @@ export const Send = ({
 								<Icon name="Receive" width={20} height={20}></Icon>
 							</button>
 						</InputAddonEnd>
-						{!sender && (
-							<div className="absolute b-2 flex items-center mt-2 ml-4">
-								<Circle
-									className="bg-theme-neutral-200 border-theme-neutral-200"
-									size="small"
-									noShadow
-								/>
-							</div>
-						)}
 					</InputGroup>
 
-					{getProfileInfo(sender)?.address && (
-						<div className="-mt-10 flex items-center mt-10 ml-4">
+					{!sender && (
+						<div className="absolute -mt-10 ml-4">
+							<Circle
+								className="bg-theme-neutral-200 border-theme-neutral-200 mt-px"
+								size="small"
+								noShadow
+							/>
+						</div>
+					)}
+					{sender && (
+						<div className="-mt-10 flex ml-4">
 							<Circle
 								avatarId={getProfileInfo(sender)?.address}
 								className="bg-theme-neutral-300 border-theme-neutral-300"
 								size="small"
 								noShadow
 							/>
-							<div className="text-theme-neutral-800 font-semibold ml-4">
+							<div className="text-theme-neutral-800 font-semibold ml-4 mt-1">
 								<Address
+									maxChars={30}
 									address={getProfileInfo(sender)?.address}
 									walletName={getProfileInfo(sender)?.walletName}
 								></Address>
@@ -158,12 +226,12 @@ export const Send = ({
 					<div className="mb-2">
 						<FormLabel label="Recipient" />
 					</div>
-					<InputGroup className="send-transaction__select-contact">
+					<InputGroup className="send-transaction__select-contact select-transparent">
 						<Select disabled={!network} placeholder=" " ref={register}>
-							{recipientList &&
-								recipientList.map((contact: any, index: number) => (
+							{availableContacts &&
+								availableContacts.map((contact: any, index: number) => (
 									<option key={index} value={contact.address}>
-										{contact.address}
+										{contact.formatted}
 									</option>
 								))}
 						</Select>
@@ -176,28 +244,28 @@ export const Send = ({
 								<Icon name="Receive" width={20} height={20}></Icon>
 							</button>
 						</InputAddonEnd>
-
-						{!recipient && (
-							<div className="absolute b-2 flex items-center mt-2 ml-4">
-								<Circle
-									className="bg-theme-neutral-200 border-theme-neutral-200"
-									size="small"
-									noShadow
-								/>
-							</div>
-						)}
 					</InputGroup>
 
-					{getProfileInfo(recipient)?.address && (
-						<div className="-mt-10 flex items-center mt-10 ml-4">
+					{!recipient && (
+						<div className="absolute -mt-10 ml-4">
+							<Circle
+								className="bg-theme-neutral-200 border-theme-neutral-200 mt-px"
+								size="small"
+								noShadow
+							/>
+						</div>
+					)}
+					{recipient && (
+						<div className="-mt-10 flex ml-4">
 							<Circle
 								avatarId={getProfileInfo(recipient)?.address}
 								className="bg-theme-neutral-300 border-theme-neutral-300"
 								size="small"
 								noShadow
 							/>
-							<div className="text-theme-neutral-800 font-semibold ml-4">
+							<div className="text-theme-neutral-800 font-semibold ml-4 mt-1">
 								<Address
+									maxChars={30}
 									address={getProfileInfo(recipient)?.address}
 									walletName={getProfileInfo(recipient)?.walletName}
 								></Address>
@@ -229,6 +297,42 @@ export const Send = ({
 						</InputAddonEnd>
 					</InputGroup>
 				</FormField>
+
+				{amount > 0 && !!recipient && (
+					<Button
+						color="primary"
+						variant="plain"
+						className="w-full"
+						onClick={() => onAddRecipient(recipient, amount)}
+					>
+						Add Recipient{" "}
+					</Button>
+				)}
+
+				{addedRecipients.length > 0 && (
+					<div className="pt-6">
+						<div className="text-sm font-semibold text-theme-neutral-700 mb-4">Recipients</div>
+						<Table
+							columns={[
+								{ Header: "Avatar", className: "invisible w-2" },
+								{ Header: "Address" },
+								{ Header: "Amount", className: "float-right" },
+								{ Header: "Action", className: "invisible" },
+							]}
+							data={addedRecipients}
+						>
+							{(addedRecipient: any) => (
+								<RecipientListItem
+									assetSymbol={assetSymbol}
+									amount={addedRecipient.amount}
+									address={addedRecipient.address}
+									walletName={addedRecipient.walletName}
+									onRemove={() => onRemoveRecipient(addedRecipient.address)}
+								/>
+							)}
+						</Table>
+					</div>
+				)}
 
 				<FormField name="smartbridge" className="relative mt-1">
 					<div className="mb-2">
@@ -287,6 +391,7 @@ export const Send = ({
 Send.defaultProps = {
 	maxFee: 100,
 	maxAvailableAmount: 80,
+	assetSymbol: "ARK",
 	feeRange: {
 		last: 10,
 		min: 1,
@@ -313,24 +418,26 @@ Send.defaultProps = {
 			address: "FJKDSALJFKASLJFKSDAJFKFKDSAJFKSAJFKLASJKDFJ",
 			walletName: "My Wallet",
 			avatarId: "FJKDSALJFKASLJFKSDAJFKFKDSAJFKSAJFKLASJKDFJ",
+			formatted: "My Wallet FJKDSALJFKASL...SAJFKLASJKDFJ",
 		},
 	],
-	recipientList: [
+	contactList: [
 		{
-			address: "FJKDSALJFKASLJFKSDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
+			address: "FJKDSALJFKASLJFKSDAJD333FKFKDSAJFKSAJFKLASJKDFJ",
 			walletName: "Recipient Wallet",
-			avatarId: "FJKDSALJFKASLJFKSDAJF3KFKDSAJFKSAJFKLASJKDFJ",
+			formatted: "Recipient Wallet FJKDSALJFKASL...SAJFKLASJKDFJ",
+		},
+		{
+			address: "AhFJKDSALJFKASLJFKSDEAJ333FKFKDSAJFKSAJFKLASJKDFJ",
+			walletName: "Recipient Multisig",
+			formatted: " Recipient Multisig AhFJKDSALJFKA...SAJFKLASJKDFJ",
 			isMultisig: true,
 		},
 		{
-			address: "AhFJKDSALJFKASLJFKSDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
-			walletName: "Recipient 2 Wallet",
-			avatarId: "AhFJKDSALJFKASLJFKSDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
-			isInNetwork: true,
-		},
-		{
-			address: "FAhFJKDSALJFKASLJFKSDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
-			avatarId: "AAhFJKDSALJFKASLJFKSDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
+			address: "FAhFJKDSALJFKASLJFKSFDAJ333FKFKDSAJFKSAJFKLASJKDFJ",
+			walletName: "Recipient in Ark",
+			formatted: "Recipient in Ark FAhFJKDSALJFK...SAJFKLASJKDFJ",
+			isInArkNetwork: true,
 		},
 	],
 };
